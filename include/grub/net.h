@@ -562,4 +562,14 @@ extern char *grub_net_default_server;
 #define GRUB_NET_INTERVAL 400
 #define GRUB_NET_INTERVAL_ADDITION 20
 
+// BOOTP Processor Architecture types, from
+// https://www.iana.org/assignments/dhcpv6-parameters/dhcpv6-parameters.xhtml#processor-architecture
+#if !defined(GRUB_MACHINE_EFI) && (defined(__i386__) || defined(__x86_64__))
+#define GRUB_NET_BOOTP_ARCH 0x0000
+#elif defined(GRUB_MACHINE_EFI) && defined(__x86_64__)
+#define GRUB_NET_BOOTP_ARCH 0x0007
+#elif defined(GRUB_MACHINE_EFI) && defined(__aarch64__)
+#define GRUB_NET_BOOTP_ARCH 0x000B
+#endif
+
 #endif /* ! GRUB_NET_HEADER */

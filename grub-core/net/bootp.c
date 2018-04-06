@@ -25,16 +25,6 @@
 #include <grub/net/udp.h>
 #include <grub/datetime.h>
 
-#if !defined(GRUB_MACHINE_EFI) && (defined(__i386__) || defined(__x86_64__))
-#define GRUB_NET_BOOTP_ARCH 0x0000
-#elif defined(GRUB_MACHINE_EFI) && defined(__x86_64__)
-#define GRUB_NET_BOOTP_ARCH 0x0007
-#elif defined(GRUB_MACHINE_EFI) && defined(__aarch64__)
-#define GRUB_NET_BOOTP_ARCH 0x000B
-#else
-#error "unknown bootp architecture"
-#endif
-
 static grub_uint8_t dhcp_option_header[] = {GRUB_NET_BOOTP_RFC1048_MAGIC_0,
 					    GRUB_NET_BOOTP_RFC1048_MAGIC_1,
 					    GRUB_NET_BOOTP_RFC1048_MAGIC_2,
@@ -42,6 +32,10 @@ static grub_uint8_t dhcp_option_header[] = {GRUB_NET_BOOTP_RFC1048_MAGIC_0,
 static grub_uint8_t grub_userclass[] = {0x4D, 0x06, 0x05, 'G', 'R', 'U', 'B', '2'};
 static grub_uint8_t grub_dhcpdiscover[] = {0x35, 0x01, 0x01};
 static grub_uint8_t grub_dhcptime[] = {0x33, 0x04, 0x00, 0x00, 0x0e, 0x10};
+#ifdef GRUB_NET_BOOTP_ARCH
+static grub_uint8_t grub_dhcparch[] = {0x5D, 0x02, GRUB_NET_BOOTP_ARCH >> 8, GRUB_NET_BOOTP_ARCH & 0xFF};
+#endif
+static grub_uint8_t grub_dhcpterminator[] = {0xFF};
 
 static void
 parse_dhcp_vendor (const char *name, const void *vend, int limit, int *mask)
@@ -519,12 +513,18 @@ grub_cmd_bootp (struct grub_command *cmd __attribute__ ((unused)),
 	  grub_net_link_level_address_t ll_target;
 	  grub_uint8_t *offset;
 
-	  if (!ifaces[j].prev)
+    const grub_size_t dhcp_options_size = sizeof(dhcp_option_header)
+      + sizeof(grub_userclass)
+      + sizeof(grub_dhcpdiscover)
+#ifdef GRUB_NET_BOOTP_ARCH
+      + sizeof(grub_dhcparch)
+#endif
+      + sizeof(grub_dhcptime)
+      + sizeof(grub_dhcpterminator);
+
+    if (!ifaces[j].prev)
 	    continue;
-	  nb = grub_netbuff_alloc (sizeof (*pack) + sizeof(dhcp_option_header)
-				   + sizeof(grub_userclass)
-				   + sizeof(grub_dhcpdiscover)
-				   + sizeof(grub_dhcptime) + 64 + 128);
+	  nb = grub_netbuff_alloc (sizeof (*pack) + dhcp_options_size + 64 + 128);
 	  if (!nb)
 	    {
 	      grub_netbuff_free (nb);
@@ -566,16 +566,12 @@ grub_cmd_bootp (struct grub_command *cmd __attribute__ ((unused)),
 	  grub_memcpy (offset, grub_userclass, sizeof(grub_userclass));
 	  offset += sizeof(grub_userclass);
 	  grub_memcpy (offset, grub_dhcptime, sizeof(grub_dhcptime));
-
-	  /* insert Client System Architecture (option 93) */
 	  offset += sizeof(grub_dhcptime);
-	  offset[0] = 93;
-	  offset[1] = 2;
-	  offset[2] = (GRUB_NET_BOOTP_ARCH >> 8);
-	  offset[3] = (GRUB_NET_BOOTP_ARCH & 0xFF);
-
-	  /* option terminator */
-	  offset[4] = 255;
+#ifdef GRUB_NET_BOOTP_ARCH
+	  grub_memcpy (offset, grub_dhcparch, sizeof(grub_dhcparch));
+	  offset += sizeof(grub_dhcparch);
+#endif
+	  grub_memcpy (offset, grub_dhcpterminator, sizeof(grub_dhcpterminator));
 
 	  grub_netbuff_push (nb, sizeof (*udph));
 
